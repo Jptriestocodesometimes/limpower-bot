@@ -4,16 +4,19 @@ import { fromZonedTime, toZonedTime, format } from 'date-fns-tz';
 
 const TIMEZONE = process.env.TIMEZONE || 'America/Sao_Paulo';
 
+// Duração padrão por tipo de serviço (em horas, para o bloco no Calendar)
 export const SERVICE_DURATIONS = {
-  limpeza_normal: 3,
-  limpeza_estofados: 2,
-  limpeza_pos_obra: 6
+  pos_obra: 8,       // Pós-Obra: bloca 1 dia completo (serviços multi-dia são gerenciados manualmente)
+  pre_mudanca: 5,    // Pré-Mudança: estimativa média
+  estofados: 3,      // Higienização de Estofados: estimativa média
+  vidros: 4          // Limpeza de Vidros: estimativa média
 };
 
 export const SERVICE_LABELS = {
-  limpeza_normal: 'Limpeza Normal da Casa',
-  limpeza_estofados: 'Limpeza de Estofados',
-  limpeza_pos_obra: 'Limpeza Pós Obra'
+  pos_obra: 'Limpeza Pós-Obra',
+  pre_mudanca: 'Limpeza Pré-Mudança',
+  estofados: 'Higienização de Estofados',
+  vidros: 'Limpeza de Vidros'
 };
 
 function getWorkingConfig() {
@@ -36,9 +39,8 @@ function getAuth() {
 
 export async function getAvailableSlots(dateStr, serviceType) {
   const config = getWorkingConfig();
-  const duration = SERVICE_DURATIONS[serviceType] || 3;
+  const duration = SERVICE_DURATIONS[serviceType] || 4;
 
-  // Parse date in local timezone
   const date = parseISO(dateStr);
   const dayOfWeek = toZonedTime(date, TIMEZONE).getDay();
 
@@ -53,7 +55,6 @@ export async function getAvailableSlots(dateStr, serviceType) {
   const auth = getAuth();
   const calendar = google.calendar({ version: 'v3', auth });
 
-  // Build start/end of working day in UTC
   const startLocal = setSeconds(setMinutes(setHours(date, config.start), 0), 0);
   const endLocal = setSeconds(setMinutes(setHours(date, config.end), 0), 0);
   const startUtc = fromZonedTime(startLocal, TIMEZONE);
@@ -72,7 +73,6 @@ export async function getAvailableSlots(dateStr, serviceType) {
     end: new Date(event.end.dateTime || event.end.date)
   }));
 
-  // Generate 1-hour slots within working hours
   const slots = [];
   let cursor = new Date(startUtc);
 
@@ -102,12 +102,14 @@ export async function createAppointment({
   address,
   date,
   time,
+  duration_hours,
   notes
 }) {
   const auth = getAuth();
   const calendar = google.calendar({ version: 'v3', auth });
 
-  const duration = SERVICE_DURATIONS[service_type] || 3;
+  // Usa duration_hours se passado pelo agente; caso contrário usa o padrão do serviço
+  const duration = duration_hours ?? SERVICE_DURATIONS[service_type] ?? 4;
   const label = SERVICE_LABELS[service_type] || service_type;
 
   const [hours, minutes] = time.split(':').map(Number);

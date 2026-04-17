@@ -1,10 +1,15 @@
 import 'dotenv/config';
 import express from 'express';
-import { processMessage } from './agent.js';
+import { processMessage, injectApprovalResult } from './agent.js';
 import { sendMessage, sendTyping } from './whatsapp.js';
 
 const app = express();
 app.use(express.json());
+
+// JID da Fernanda no formato WhatsApp (ex: 5511988325990@s.whatsapp.net)
+const FERNANDA_JID = process.env.FERNANDA_PHONE
+  ? `${process.env.FERNANDA_PHONE}@s.whatsapp.net`
+  : null;
 
 app.post('/webhook', async (req, res) => {
   // Responde imediatamente para o Evolution API não retentar
@@ -23,7 +28,6 @@ app.post('/webhook', async (req, res) => {
   if (jid.endsWith('@g.us')) return;
 
   const phone = jid.replace('@s.whatsapp.net', '');
-  const customerName = data.pushName || 'Cliente';
 
   // Extrai o texto da mensagem (suporta mensagens simples e extendidas)
   const text =
@@ -33,6 +37,14 @@ app.post('/webhook', async (req, res) => {
 
   if (!text.trim()) return;
 
+  // ── Mensagens da Fernanda ───────────────────────────────────────────────────
+  if (FERNANDA_JID && jid === FERNANDA_JID) {
+    await handleFernandaMessage(phone, text.trim());
+    return;
+  }
+
+  // ── Mensagens de clientes ───────────────────────────────────────────────────
+  const customerName = data.pushName || 'Cliente';
   console.log(`[${phone}] ${customerName}: ${text}`);
 
   try {
@@ -48,9 +60,42 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// Processa respostas de aprovação da Fernanda
+// Formato esperado: "CODIGO sim" ou "CODIGO nao"
+async function handleFernandaMessage(fernandaPhone, text) {
+  const match = text.match(/^(\S+)\s+(sim|nao|não|aprovado|recusado)$/i);
+
+  if (!match) {
+    // Mensagem da Fernanda que não é uma aprovação — ignora silenciosamente
+    console.log(`[Fernanda] Mensagem não reconhecida como aprovação: "${text}"`);
+    return;
+  }
+
+  const code = match[1];
+  const approved = /^(sim|aprovado)$/i.test(match[2]);
+
+  console.log(`[Fernanda] Resposta recebida — código: ${code} | aprovado: ${approved}`);
+
+  try {
+    const handled = await injectApprovalResult(code, approved);
+
+    if (handled) {
+      await sendMessage(fernandaPhone, `✅ Resposta processada para o código *${code}*.`);
+    } else {
+      await sendMessage(fernandaPhone, `⚠️ Código *${code}* não encontrado ou já processado.`);
+    }
+  } catch (err) {
+    console.error(`Erro ao processar aprovação da Fernanda (código ${code}):`, err);
+    await sendMessage(fernandaPhone, `❌ Erro ao processar o código *${code}*. Verifique os logs.`);
+  }
+}
+
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Limpower Bot rodando na porta ${PORT}`);
+  if (!FERNANDA_JID) {
+    console.warn('⚠️  FERNANDA_PHONE não configurado — aprovações não serão roteadas!');
+  }
 });
