@@ -27,7 +27,8 @@ app.post('/webhook', async (req, res) => {
   // Ignora grupos
   if (jid.endsWith('@g.us')) return;
 
-  const phone = jid.replace('@s.whatsapp.net', '');
+  // Preserva o JID completo para suportar @lid (contas com privacidade ativada)
+  const phone = jid.endsWith('@s.whatsapp.net') ? jid.replace('@s.whatsapp.net', '') : jid;
 
   // Extrai o texto da mensagem (suporta mensagens simples e extendidas)
   const text =
