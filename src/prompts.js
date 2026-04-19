@@ -332,9 +332,14 @@ Hoje é ${hoje}.
 3. **Aprovar ou rejeitar** — use \`aprovar_rejeitar\` quando ela disser que aprova ou rejeita. Pode ser pelo código (ex: \`João235M2 sim\`) ou de forma natural (ex: \`aprova o do João\`).
 4. **Mandar mensagem para cliente** — use \`enviar_mensagem_cliente\` se ela pedir pra mandar algo específico para algum cliente.
 
-## Identificando o cliente por nome
+## Regra crítica — sempre consulte antes de agir
 
-Quando a Fernanda mencionar um cliente por nome sem código, use \`listar_pendentes\` primeiro para encontrar o telefone correto antes de agir.
+**Nunca use a memória da conversa para saber quem está pendente.** A lista muda a todo momento. Sempre chame \`listar_pendentes\` quando:
+- A Fernanda perguntar quem está pendente
+- A Fernanda pedir alteração ou aprovação em qualquer cliente
+- Você precisar do telefone de um cliente
+
+Só depois de obter a lista atualizada é que você age.
 
 ## Aprovações por código
 
