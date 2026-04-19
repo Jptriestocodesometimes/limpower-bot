@@ -43,19 +43,23 @@ Limpeza após reforma ou construção. Perguntas obrigatórias:
 - Quantos m² tem o imóvel?
 - É apartamento, casa ou espaço comercial?
 - Qual o endereço completo do imóvel? (rua, número, bairro, cidade)
-- Como está o nível de sujeira? (pouco sujo / médio / muito sujo)
-  - Pouco sujo: poeira fina, resíduos leves, sem entulho
-  - Médio sujo: resíduos de rejunte, tintas, serragem, sujeira moderada (sem entulho pesado)
-  - Muito sujo: sujeira intensa generalizada, grande acúmulo de resíduos
+- Como está o nível de sujeira? (padrão / médio / pesado)
+  - Padrão: poeira fina, resíduos leves, sem entulho
+  - Médio: resíduos de rejunte, tintas, serragem, sujeira moderada (sem entulho pesado)
+  - Pesado: sujeira intensa generalizada, grande acúmulo de resíduos
 - Tem varanda envidraçada? Vidros acima de 2m?
 - Tem data preferida?
 
 Tabela de preços — Pós-Obra:
-- Até 50m²: Pouco sujo R$1.000 (0,5 dia/3p) | Médio R$1.500 (1 dia/3p) | Muito R$2.500 (2 dias/4p)
-- 51–80m²: Pouco R$1.300 (1 dia/3p) | Médio R$1.900 (1 dia/5p) | Muito R$2.500 (2 dias/4p)
-- 81–130m²: Pouco R$1.800 (1 dia/5p) | Médio R$2.800 (2 dias/5p) | Muito R$4.000 (2 dias/6p)
-- 131–200m²: Pouco R$2.800 (1 dia/6p) | Médio R$3.800 (2 dias/6p) | Muito R$5.800 (3 dias/6p)
-- 200m²+: Pouco R$4.200 (2 dias/6p) | Médio R$7.600 (3 dias/6p) | Muito R$12.000 (4 dias/6p)
+- Até 40m²:  Padrão R$950 (1 dia/2p)      | Médio R$1.000 (1 dia/3p)    | Pesado R$1.500 (1 dia/4p)
+- 41–60m²:   Padrão R$1.500 (1 dia/3-4p)  | Médio R$1.800 (1 dia/5p)    | Pesado R$2.400 (2 dias/5-6p)
+- 61–80m²:   Padrão R$1.500 (1 dia/4p)    | Médio R$2.000 (1 dia/5p)    | Pesado R$2.400 (2 dias/5p)
+- 81–100m²:  Padrão R$1.600 (1 dia/5p)    | Médio R$1.800 (1 dia/6p)    | Pesado R$3.700 (2 dias/7-8p)
+- 101–130m²: Padrão R$1.800 (1 dia/5p)    | Médio R$2.600 (2 dias/5p)   | Pesado R$3.800 (2 dias/6-7p)
+- 131–170m²: Padrão R$2.700 (1 dia/6-7p)  | Médio/Pesado R$3.800 (2 dias/6p)
+- 171–250m²: Padrão R$3.200 (1 dia/5-6p)  | Médio R$4.000 (2 dias/6p)   | Pesado R$6.000 (2-3 dias/7-8p)
+- 251–330m²: Padrão R$4.000 (2 dias/5-6p) | Médio R$5.400 (2 dias/5-6p) | Pesado R$8.600 (3-4 dias/5-6p)
+- 331–420m²: Padrão R$4.100 (2 dias/5-6p) | Médio R$5.500 (3 dias/5p)   | Pesado R$8.800 (3-4 dias/5-6p)
 
 ### 2. Limpeza Pré-Mudança
 Limpeza antes de se mudar para um imóvel. Perguntas obrigatórias:
