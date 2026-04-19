@@ -14,6 +14,7 @@ const STAFF_PHONES = new Set([
   '5511993461013', // Natalia faxineira
   '5511948413792', // Juliana faxineira
   '5511963311656', // Nicole faxineira
+  '5511977848710', // Keylla faxineira
 ]);
 
 // JID da Fernanda — suporta número normal (5511...) ou @lid (iOS com privacidade ativada)
