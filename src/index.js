@@ -6,6 +6,16 @@ import { sendMessage, sendTyping } from './whatsapp.js';
 const app = express();
 app.use(express.json());
 
+// Funcionários — bot ignora mensagens desses números silenciosamente
+const STAFF_PHONES = new Set([
+  '5511959239372', // Marcelo estofados
+  '5511945174999', // Mara faxineira
+  '5511982742487', // Pedrita faxineira
+  '5511993461013', // Natalia faxineira
+  '5511948413792', // Juliana faxineira
+  '5511963311656', // Nicole faxineira
+]);
+
 // JID da Fernanda — suporta número normal (5511...) ou @lid (iOS com privacidade ativada)
 const fernandaRaw = process.env.FERNANDA_PHONE || '';
 const FERNANDA_JID = fernandaRaw
@@ -38,6 +48,9 @@ app.post('/webhook', async (req, res) => {
     '';
 
   if (!text.trim()) return;
+
+  // ── Funcionários — ignora silenciosamente ───────────────────────────────────
+  if (STAFF_PHONES.has(phone)) return;
 
   // ── Mensagens da Fernanda ───────────────────────────────────────────────────
   if (FERNANDA_JID && jid === FERNANDA_JID) {

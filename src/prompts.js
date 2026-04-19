@@ -44,6 +44,9 @@ Limpeza após reforma ou construção. Perguntas obrigatórias:
 - É apartamento, casa ou espaço comercial?
 - Qual o endereço completo do imóvel? (rua, número, bairro, cidade)
 - Como está o nível de sujeira? (pouco sujo / médio / muito sujo)
+  - Pouco sujo: poeira fina, resíduos leves, sem entulho
+  - Médio sujo: resíduos de rejunte, tintas, serragem, sujeira moderada (sem entulho pesado)
+  - Muito sujo: sujeira intensa generalizada, grande acúmulo de resíduos
 - Tem varanda envidraçada? Vidros acima de 2m?
 - Tem data preferida?
 
