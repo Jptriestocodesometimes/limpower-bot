@@ -6,9 +6,10 @@ import { sendMessage, sendTyping } from './whatsapp.js';
 const app = express();
 app.use(express.json());
 
-// JID da Fernanda no formato WhatsApp (ex: 5511988325990@s.whatsapp.net)
-const FERNANDA_JID = process.env.FERNANDA_PHONE
-  ? `${process.env.FERNANDA_PHONE}@s.whatsapp.net`
+// JID da Fernanda — suporta número normal (5511...) ou @lid (iOS com privacidade ativada)
+const fernandaRaw = process.env.FERNANDA_PHONE || '';
+const FERNANDA_JID = fernandaRaw
+  ? (fernandaRaw.includes('@') ? fernandaRaw : `${fernandaRaw}@s.whatsapp.net`)
   : null;
 
 app.post('/webhook', async (req, res) => {
@@ -67,8 +68,8 @@ async function handleFernandaMessage(fernandaPhone, text) {
   const match = text.match(/^(\S+)\s+(sim|nao|não|aprovado|recusado)$/i);
 
   if (!match) {
-    // Mensagem da Fernanda que não é uma aprovação — ignora silenciosamente
     console.log(`[Fernanda] Mensagem não reconhecida como aprovação: "${text}"`);
+    await sendMessage(fernandaPhone, `⚠️ Formato não reconhecido.\n\nPara responder, envie:\n*CODIGO sim* ou *CODIGO nao*\n\nExemplo: \`João128M2 sim\``);
     return;
   }
 
