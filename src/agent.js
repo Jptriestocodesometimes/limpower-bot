@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt, buildFernandaSystemPrompt } from './prompts.js';
 import { getAvailableSlots, createAppointment } from './calendar.js';
@@ -5,6 +8,21 @@ import { sendMessage, sendDocument } from './whatsapp.js';
 import { generateProposalModelA, buildFileName } from './proposal.js';
 
 const client = new Anthropic();
+
+const CONV_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'conversations');
+fs.mkdirSync(CONV_DIR, { recursive: true });
+
+function loadConversation(phone) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(CONV_DIR, `${phone}.json`), 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function saveConversation(phone, messages) {
+  fs.writeFileSync(path.join(CONV_DIR, `${phone}.json`), JSON.stringify(messages));
+}
 
 // Histórico de conversa por número de telefone
 // Formato: Map<phone, Message[]>
@@ -393,7 +411,7 @@ export async function processFernandaMessage(text) {
 
 export async function processMessage(phone, text, customerName) {
   if (!conversations.has(phone)) {
-    conversations.set(phone, []);
+    conversations.set(phone, loadConversation(phone));
   }
 
   const messages = conversations.get(phone);
@@ -453,8 +471,9 @@ export async function processMessage(phone, text, customerName) {
     break;
   }
 
-  // Persiste apenas as últimas 30 mensagens para não crescer demais
-  conversations.set(phone, thread.slice(-30));
+  const kept = thread.slice(-30);
+  conversations.set(phone, kept);
+  saveConversation(phone, kept);
 
   return finalResponse;
 }
