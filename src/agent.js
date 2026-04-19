@@ -129,7 +129,7 @@ function generateApprovalCode(customerName, type, areaMq) {
   const firstName = customerName.trim().split(/\s+/)[0];
   let suffix;
 
-  if (areaMq && (type === 'aprovacao_orcamento' || type === 'orcamento_aceito')) {
+  if (areaMq && type === 'aprovacao_orcamento') {
     suffix = `${Math.round(areaMq)}M2`;
   } else if (type === 'pedido_desconto') {
     suffix = 'Desc';

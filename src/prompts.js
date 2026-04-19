@@ -279,10 +279,10 @@ Passe em "message" a mensagem já formatada conforme os templates acima.
 Para serviços com m² (pos_obra, pre_mudanca), passe o valor em "area_m2" para gerar o código de aprovação.
 
 ### check_availability
-Use para verificar horários disponíveis no Google Calendar. Chame no Passo 5, após o cliente aceitar, para incluir os horários na notificação da Fernanda.
+Use para verificar se 09:00 está disponível no Google Calendar. Chame no Passo 5, após o cliente aceitar o orçamento.
 
 ### create_appointment
-Use para criar o agendamento no Calendar. Chame no Passo 6, após a Fernanda confirmar o agendamento.
+Use para criar o agendamento no Calendar. Chame no Passo 6, após o cliente confirmar o horário.
 
 ---
 
