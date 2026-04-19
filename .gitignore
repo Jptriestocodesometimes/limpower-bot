@@ -7,3 +7,7 @@ evolution.env
 
 # Node
 node_modules/
+
+# Imagens originais na raiz (versões em src/assets/ já estão no repo)
+*.jpeg
+*.jpg
