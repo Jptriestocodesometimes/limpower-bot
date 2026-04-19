@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { processMessage, injectApprovalResult } from './agent.js';
+import { processMessage, processFernandaMessage } from './agent.js';
 import { sendMessage, sendTyping } from './whatsapp.js';
 
 const app = express();
@@ -75,33 +75,18 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// Processa respostas de aprovação da Fernanda
-// Formato esperado: "CODIGO sim" ou "CODIGO nao"
+// Canal interno — Fernanda conversa com a Li
 async function handleFernandaMessage(fernandaPhone, text) {
-  const match = text.match(/^(\S+)\s+(sim|nao|não|aprovado|recusado)$/i);
-
-  if (!match) {
-    console.log(`[Fernanda] Mensagem não reconhecida como aprovação: "${text}"`);
-    await sendMessage(fernandaPhone, `⚠️ Formato não reconhecido.\n\nPara responder, envie:\n*CODIGO sim* ou *CODIGO nao*\n\nExemplo: \`João128M2 sim\``);
-    return;
-  }
-
-  const code = match[1];
-  const approved = /^(sim|aprovado)$/i.test(match[2]);
-
-  console.log(`[Fernanda] Resposta recebida — código: ${code} | aprovado: ${approved}`);
-
+  console.log(`[Fernanda] ${text}`);
   try {
-    const handled = await injectApprovalResult(code, approved);
-
-    if (handled) {
-      await sendMessage(fernandaPhone, `✅ Resposta processada para o código *${code}*.`);
-    } else {
-      await sendMessage(fernandaPhone, `⚠️ Código *${code}* não encontrado ou já processado.`);
+    const reply = await processFernandaMessage(text);
+    if (reply) {
+      await sendMessage(fernandaPhone, reply);
+      console.log(`[Li → Fernanda] ${reply}`);
     }
   } catch (err) {
-    console.error(`Erro ao processar aprovação da Fernanda (código ${code}):`, err);
-    await sendMessage(fernandaPhone, `❌ Erro ao processar o código *${code}*. Verifique os logs.`);
+    console.error('[Fernanda] Erro ao processar mensagem:', err);
+    await sendMessage(fernandaPhone, '❌ Tive um problema interno. Verifique os logs.');
   }
 }
 

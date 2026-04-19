@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { buildSystemPrompt } from './prompts.js';
+import { buildSystemPrompt, buildFernandaSystemPrompt } from './prompts.js';
 import { getAvailableSlots, createAppointment } from './calendar.js';
 import { sendMessage, sendDocument } from './whatsapp.js';
 import { generateProposalModelA, buildFileName } from './proposal.js';
@@ -17,6 +17,63 @@ const pendingApprovals = new Map();
 // Documentos gerados aguardando envio após aprovação
 // Formato: Map<customer_phone, { buffer, fileName }>
 const pendingDocuments = new Map();
+
+// Inputs originais das propostas para permitir reedição pela Fernanda
+// Formato: Map<customer_phone, generate_proposal_input>
+const pendingProposalInputs = new Map();
+
+// Conversa da Fernanda com a Li (canal interno)
+const fernandaConversation = [];
+
+const FERNANDA_TOOLS = [
+  {
+    name: 'listar_pendentes',
+    description: 'Lista todos os orçamentos pendentes de aprovação, com nome do cliente, telefone e código.',
+    input_schema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'atualizar_proposta',
+    description: 'Aplica alterações em uma proposta pendente e reenvia o documento atualizado para a Fernanda revisar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_phone: { type: 'string', description: 'Telefone do cliente cuja proposta será alterada' },
+        value: { type: 'string', description: 'Novo valor (ex: "2.000,00")' },
+        duration_days: { type: 'number', description: 'Novo número de dias' },
+        team_count: { type: 'number', description: 'Novo total de pessoas na equipe' },
+        team_cleaners: { type: 'number', description: 'Novas pessoas de limpeza' },
+        services_list: { type: 'array', items: { type: 'string' }, description: 'Nova lista de serviços' },
+        preferred_date: { type: 'string', description: 'Nova data preferida' },
+        local_description: { type: 'string', description: 'Nova descrição do local' }
+      },
+      required: ['customer_phone']
+    }
+  },
+  {
+    name: 'aprovar_rejeitar',
+    description: 'Aprova ou rejeita um orçamento pelo código de aprovação.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        code: { type: 'string', description: 'Código de aprovação (ex: João235M2)' },
+        approved: { type: 'boolean', description: 'true para aprovar, false para rejeitar' }
+      },
+      required: ['code', 'approved']
+    }
+  },
+  {
+    name: 'enviar_mensagem_cliente',
+    description: 'Envia uma mensagem diretamente para um cliente pelo WhatsApp.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_phone: { type: 'string', description: 'Telefone do cliente' },
+        message: { type: 'string', description: 'Mensagem a enviar' }
+      },
+      required: ['customer_phone', 'message']
+    }
+  }
+];
 
 const TOOLS = [
   {
@@ -169,6 +226,7 @@ async function runGenerateProposal(input) {
 
     const fileName = buildFileName({ serviceType: service_type, customerName: customer_name, neighborhood, areaMq: area_m2 });
     pendingDocuments.set(customer_phone, { buffer, fileName });
+    pendingProposalInputs.set(customer_phone, input);
 
     console.log(`[generate_proposal] Documento gerado: ${fileName} | Cliente: ${customer_phone}`);
     return { success: true, fileName };
@@ -232,6 +290,105 @@ async function runTool(name, input) {
     return await createAppointment(input);
   }
   throw new Error(`Ferramenta desconhecida: ${name}`);
+}
+
+async function runFernandaTool(name, input) {
+  if (name === 'listar_pendentes') {
+    const pendentes = [];
+    for (const [code, data] of pendingApprovals) {
+      const stored = pendingProposalInputs.get(data.phone);
+      pendentes.push({
+        code,
+        telefone: data.phone,
+        cliente: stored?.customer_name ?? 'desconhecido',
+        tipo: data.type
+      });
+    }
+    return pendentes.length > 0 ? pendentes : { message: 'Nenhum orçamento pendente no momento.' };
+  }
+
+  if (name === 'atualizar_proposta') {
+    const { customer_phone, ...changes } = input;
+    const stored = pendingProposalInputs.get(customer_phone);
+    if (!stored) return { success: false, error: 'Proposta não encontrada para esse cliente.' };
+
+    const updated = { ...stored, ...changes };
+    const result = await runGenerateProposal(updated);
+    if (!result.success) return result;
+
+    const fernandaPhone = process.env.FERNANDA_PHONE;
+    const doc = pendingDocuments.get(customer_phone);
+    if (doc && fernandaPhone) {
+      try {
+        await sendDocument(fernandaPhone, doc.buffer, doc.fileName, '📎 Proposta atualizada para revisão');
+      } catch (err) {
+        console.warn('[atualizar_proposta] Erro ao reenviar documento:', err.message);
+      }
+    }
+
+    return { success: true, message: `Proposta de ${stored.customer_name} atualizada e reenviada.` };
+  }
+
+  if (name === 'aprovar_rejeitar') {
+    const handled = await injectApprovalResult(input.code, input.approved);
+    if (!handled) return { success: false, error: `Código "${input.code}" não encontrado ou já processado.` };
+    return { success: true };
+  }
+
+  if (name === 'enviar_mensagem_cliente') {
+    await sendMessage(input.customer_phone, input.message);
+    return { success: true };
+  }
+
+  throw new Error(`Ferramenta desconhecida: ${name}`);
+}
+
+export async function processFernandaMessage(text) {
+  fernandaConversation.push({ role: 'user', content: text });
+  const thread = [...fernandaConversation];
+
+  let finalResponse = null;
+
+  while (true) {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: buildFernandaSystemPrompt(),
+      tools: FERNANDA_TOOLS,
+      messages: thread
+    });
+
+    thread.push({ role: 'assistant', content: response.content });
+
+    if (response.stop_reason === 'end_turn') {
+      const textBlock = response.content.find(b => b.type === 'text');
+      finalResponse = textBlock?.text ?? null;
+      break;
+    }
+
+    if (response.stop_reason === 'tool_use') {
+      const toolResults = [];
+      for (const block of response.content) {
+        if (block.type !== 'tool_use') continue;
+        console.log(`[fernanda tool] ${block.name}`, JSON.stringify(block.input));
+        let result;
+        try {
+          result = await runFernandaTool(block.name, block.input);
+          console.log(`[fernanda tool result]`, JSON.stringify(result));
+        } catch (err) {
+          result = { error: err.message };
+        }
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
+      }
+      thread.push({ role: 'user', content: toolResults });
+      continue;
+    }
+
+    break;
+  }
+
+  fernandaConversation.splice(0, fernandaConversation.length, ...thread.slice(-20));
+  return finalResponse;
 }
 
 export async function processMessage(phone, text, customerName) {
