@@ -350,8 +350,6 @@ async function runFernandaTool(name, input) {
   if (name === 'aprovar_rejeitar') {
     const handled = await injectApprovalResult(input.code, input.approved);
     if (!handled) return { success: false, error: `Código "${input.code}" não encontrado ou já processado.` };
-    // Limpa o histórico da conversa para evitar contexto stale após aprovação
-    fernandaConversation.length = 0;
     return { success: true };
   }
 
