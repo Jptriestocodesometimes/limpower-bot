@@ -1,0 +1,9 @@
+# Credenciais e segredos
+.env
+evolution.env
+
+# Claude Code
+.claude/
+
+# Node
+node_modules/
