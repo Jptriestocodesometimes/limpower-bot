@@ -14,6 +14,17 @@ export async function sendMessage(phone, text) {
   });
 }
 
+export async function sendDocument(phone, buffer, fileName, caption = '') {
+  await api.post(`/message/sendMedia/${INSTANCE()}`, {
+    number: phone,
+    mediatype: 'document',
+    mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    media: buffer.toString('base64'),
+    fileName,
+    caption
+  });
+}
+
 export async function sendTyping(phone, durationMs = 2000) {
   try {
     await api.post(`/chat/sendPresence/${INSTANCE()}`, {

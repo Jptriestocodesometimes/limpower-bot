@@ -73,26 +73,20 @@ export async function getAvailableSlots(dateStr, serviceType) {
     end: new Date(event.end.dateTime || event.end.date)
   }));
 
-  const slots = [];
-  let cursor = new Date(startUtc);
+  const fixedHour = parseInt(process.env.APPOINTMENT_HOUR || '9');
+  const slotStart = fromZonedTime(
+    setSeconds(setMinutes(setHours(date, fixedHour), 0), 0),
+    TIMEZONE
+  );
+  const slotEnd = addHours(slotStart, duration);
 
-  while (addHours(cursor, duration) <= endUtc) {
-    const slotEnd = addHours(cursor, duration);
-    const isFree = !busy.some(b => cursor < b.end && slotEnd > b.start);
+  const isFree = !busy.some(b => slotStart < b.end && slotEnd > b.start);
 
-    if (isFree) {
-      const localTime = toZonedTime(cursor, TIMEZONE);
-      slots.push(format(localTime, 'HH:mm', { timeZone: TIMEZONE }));
-    }
-
-    cursor = addHours(cursor, 1);
+  if (!isFree) {
+    return { available: false, reason: `Horário das ${String(fixedHour).padStart(2,'0')}:00 já está ocupado nesta data.` };
   }
 
-  if (slots.length === 0) {
-    return { available: false, reason: 'Sem horários disponíveis nesta data.' };
-  }
-
-  return { available: true, slots };
+  return { available: true, slots: [`${String(fixedHour).padStart(2,'0')}:00`] };
 }
 
 export async function createAppointment({

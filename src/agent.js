@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt } from './prompts.js';
 import { getAvailableSlots, createAppointment } from './calendar.js';
-import { sendMessage } from './whatsapp.js';
+import { sendMessage, sendDocument } from './whatsapp.js';
+import { generateProposalModelA, buildFileName } from './proposal.js';
 
 const client = new Anthropic();
 
@@ -13,6 +14,10 @@ const conversations = new Map();
 // Formato: Map<code_lowercase, { phone, type }>
 const pendingApprovals = new Map();
 
+// Documentos gerados aguardando envio após aprovação
+// Formato: Map<customer_phone, { buffer, fileName }>
+const pendingDocuments = new Map();
+
 const TOOLS = [
   {
     name: 'notify_fernanda',
@@ -22,7 +27,7 @@ const TOOLS = [
       properties: {
         type: {
           type: 'string',
-          enum: ['aprovacao_orcamento', 'orcamento_aceito', 'pedido_desconto', 'reclamacao', 'duvida'],
+          enum: ['aprovacao_orcamento', 'pedido_desconto', 'reclamacao', 'duvida'],
           description: 'Tipo da notificação'
         },
         customer_name: {
@@ -43,6 +48,34 @@ const TOOLS = [
         }
       },
       required: ['type', 'customer_name', 'customer_phone', 'message']
+    }
+  },
+  {
+    name: 'generate_proposal',
+    description: 'Gera o documento Word (proposta) com os dados do serviço. Chamar ANTES de notify_fernanda no Passo 3.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_name: { type: 'string', description: 'Nome completo do cliente' },
+        customer_phone: { type: 'string', description: 'Telefone do cliente (use customer_phone do sistema)' },
+        treatment: { type: 'string', description: 'Prezado Sr. / Prezada Sra. / Prezados' },
+        destinatario_linha: { type: 'string', description: 'Linha do destinatário antes do Prezado (empresa ou vazio)' },
+        local_description: { type: 'string', description: 'Ex: Apartamento 155 m² - Vila Olímpia - SP' },
+        neighborhood: { type: 'string', description: 'Bairro (para nome do arquivo)' },
+        service_type: { type: 'string', enum: ['pos_obra', 'pre_mudanca', 'estofados', 'vidros'] },
+        preferred_date: { type: 'string', description: 'Data preferida pelo cliente (texto, ex: 21/04/2026)' },
+        services_list: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Lista de serviços a serem executados (cada item = 1 parágrafo)'
+        },
+        value: { type: 'string', description: 'Valor sem R$, ex: 3.800,00' },
+        duration_days: { type: 'number', description: 'Número de dias de serviço' },
+        team_count: { type: 'number', description: 'Total de pessoas na equipe' },
+        team_cleaners: { type: 'number', description: 'Pessoas para limpeza (opcional — padrão: team_count - 1)' },
+        area_m2: { type: 'number', description: 'Área do imóvel em m² (para nome do arquivo)' }
+      },
+      required: ['customer_name', 'customer_phone', 'treatment', 'local_description', 'service_type', 'services_list', 'value', 'duration_days', 'team_count']
     }
   },
   {
@@ -112,6 +145,39 @@ function generateApprovalCode(customerName, type, areaMq) {
   return `${firstName}${suffix}`;
 }
 
+async function runGenerateProposal(input) {
+  const {
+    customer_name, customer_phone, treatment, destinatario_linha = '',
+    local_description, neighborhood = '', service_type,
+    preferred_date = '', services_list, value, duration_days,
+    team_count, team_cleaners, area_m2
+  } = input;
+
+  try {
+    const buffer = await generateProposalModelA({
+      customerName: customer_name,
+      treatment,
+      destinatarioLinha: destinatario_linha,
+      localDescription: local_description,
+      preferredDate: preferred_date,
+      servicesList: services_list,
+      value,
+      durationDays: duration_days,
+      teamCount: team_count,
+      teamCleaners: team_cleaners
+    });
+
+    const fileName = buildFileName({ serviceType: service_type, customerName: customer_name, neighborhood, areaMq: area_m2 });
+    pendingDocuments.set(customer_phone, { buffer, fileName });
+
+    console.log(`[generate_proposal] Documento gerado: ${fileName} | Cliente: ${customer_phone}`);
+    return { success: true, fileName };
+  } catch (err) {
+    console.error('[generate_proposal] Erro:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 async function runNotifyFernanda({ type, customer_name, customer_phone, message, area_m2 }) {
   const fernandaPhone = process.env.FERNANDA_PHONE;
   if (!fernandaPhone) {
@@ -131,6 +197,18 @@ async function runNotifyFernanda({ type, customer_name, customer_phone, message,
 
   await sendMessage(fernandaPhone, fullMessage);
 
+  // Envia o documento gerado para Fernanda (se houver)
+  if (type === 'aprovacao_orcamento') {
+    const doc = pendingDocuments.get(customer_phone);
+    if (doc) {
+      try {
+        await sendDocument(fernandaPhone, doc.buffer, doc.fileName, '📎 Proposta para revisão');
+      } catch (err) {
+        console.warn('[notify_fernanda] Erro ao enviar documento para Fernanda:', err.message);
+      }
+    }
+  }
+
   console.log(`[notify_fernanda] Notificação enviada para Fernanda. Código: ${code} | Cliente: ${customer_phone}`);
 
   return {
@@ -141,6 +219,9 @@ async function runNotifyFernanda({ type, customer_name, customer_phone, message,
 }
 
 async function runTool(name, input) {
+  if (name === 'generate_proposal') {
+    return await runGenerateProposal(input);
+  }
   if (name === 'notify_fernanda') {
     return await runNotifyFernanda(input);
   }
@@ -241,6 +322,20 @@ export async function injectApprovalResult(code, approved) {
   if (reply) {
     await sendMessage(phone, reply);
     console.log(`[bot → ${phone}] ${reply}`);
+  }
+
+  // Envia o documento ao cliente após aprovação do orçamento
+  if (approved && type === 'aprovacao_orcamento') {
+    const doc = pendingDocuments.get(phone);
+    if (doc) {
+      try {
+        await sendDocument(phone, doc.buffer, doc.fileName, '📎 Segue a proposta em anexo!');
+        pendingDocuments.delete(phone);
+        console.log(`[bot → ${phone}] Proposta enviada: ${doc.fileName}`);
+      } catch (err) {
+        console.warn(`[injectApprovalResult] Erro ao enviar documento ao cliente ${phone}:`, err.message);
+      }
+    }
   }
 
   return true;
