@@ -277,6 +277,8 @@ Campos obrigatórios: customer_name, customer_phone (use o valor de customer_pho
 
 Campos opcionais: destinatario_linha (empresa), neighborhood (bairro — para o nome do arquivo), preferred_date (ex: "21/04/2026"), team_cleaners (padrão: team_count - 1), area_m2 (para o nome do arquivo).
 
+Para serviços pos_obra, passe sempre dirt_level: "padrao", "medio" ou "pesado" conforme o nível de sujeira informado pelo cliente.
+
 ### notify_fernanda
 Use para notificar a Fernanda em qualquer situação que precise da aprovação ou atenção dela:
 - type="aprovacao_orcamento": antes de enviar o orçamento ao cliente (Passo 3)

@@ -51,6 +51,7 @@ function logProposalChange(original, changes, customerName, customerPhone) {
     service_type:   original.service_type,
     area_m2:        original.area_m2,
     neighborhood:   original.neighborhood,
+    dirt_level:     original.dirt_level ?? null,
     before,
     after
   };
@@ -213,7 +214,8 @@ const TOOLS = [
         duration_days: { type: 'number', description: 'Número de dias de serviço' },
         team_count: { type: 'number', description: 'Total de pessoas na equipe' },
         team_cleaners: { type: 'number', description: 'Pessoas para limpeza (opcional — padrão: team_count - 1)' },
-        area_m2: { type: 'number', description: 'Área do imóvel em m² (para nome do arquivo)' }
+        area_m2: { type: 'number', description: 'Área do imóvel em m² (para nome do arquivo)' },
+        dirt_level: { type: 'string', enum: ['padrao', 'medio', 'pesado'], description: 'Nível de sujeira para pós-obra (padrao/medio/pesado) — obrigatório para pos_obra' }
       },
       required: ['customer_name', 'customer_phone', 'treatment', 'local_description', 'service_type', 'services_list', 'value', 'duration_days', 'team_count']
     }
