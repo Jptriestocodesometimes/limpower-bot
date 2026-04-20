@@ -33,8 +33,29 @@ function saveJson(file, data) {
   fs.writeFileSync(file, JSON.stringify(data));
 }
 
-const PENDING_FILE = path.join(DATA_DIR, 'pending_approvals.json');
-const INPUTS_FILE  = path.join(DATA_DIR, 'proposal_inputs.json');
+const PENDING_FILE  = path.join(DATA_DIR, 'pending_approvals.json');
+const INPUTS_FILE   = path.join(DATA_DIR, 'proposal_inputs.json');
+const CHANGES_FILE  = path.join(DATA_DIR, 'proposal_changes.jsonl');
+
+function logProposalChange(original, changes, customerName, customerPhone) {
+  const before = {};
+  const after = {};
+  for (const key of Object.keys(changes)) {
+    before[key] = original[key];
+    after[key]  = changes[key];
+  }
+  const entry = {
+    timestamp:      new Date().toISOString(),
+    customer_name:  customerName,
+    customer_phone: customerPhone,
+    service_type:   original.service_type,
+    area_m2:        original.area_m2,
+    neighborhood:   original.neighborhood,
+    before,
+    after
+  };
+  fs.appendFileSync(CHANGES_FILE, JSON.stringify(entry) + '\n');
+}
 
 function savePendingApprovals() {
   saveJson(PENDING_FILE, Object.fromEntries(pendingApprovals));
@@ -375,6 +396,8 @@ async function runFernandaTool(name, input) {
     const { customer_phone, ...changes } = input;
     const stored = pendingProposalInputs.get(customer_phone);
     if (!stored) return { success: false, error: 'Proposta não encontrada para esse cliente.' };
+
+    logProposalChange(stored, changes, stored.customer_name, customer_phone);
 
     const updated = { ...stored, ...changes };
     const result = await runGenerateProposal(updated);
