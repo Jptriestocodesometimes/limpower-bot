@@ -102,6 +102,7 @@ Poltronas — Higienização / Impermeabilização:
 - Poltrona amamentação: R$160 / R$220
 - Poltrona comum: R$140 / R$200
 - Poltrona papai (com apoio retrátil): R$180 / R$240
+- Almofadas soltas (poltronas): R$200 / R$260
 
 Colchões sem box — Higienização / Impermeabilização:
 - Berço: R$100 / R$150
@@ -131,6 +132,7 @@ Outros — Higienização / Impermeabilização:
 - Almofada pequena (até 45x45cm): R$15 / R$30
 - Almofada grande (acima de 45x45cm): R$25 / R$35
 - Tapete (por m², a partir de): R$50/m²
+- Carpete (por m²): sob consulta (área média ~18m²)
 - Bebê conforto: R$100 / R$180
 - Carrinho padrão: R$120 / R$180
 - Carrinho duplo: R$150 / R$230
