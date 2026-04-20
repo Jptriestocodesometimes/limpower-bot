@@ -9,19 +9,66 @@ import { generateProposalModelA, buildFileName } from './proposal.js';
 
 const client = new Anthropic();
 
-const CONV_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'conversations');
+const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
+const CONV_DIR = path.join(DATA_DIR, 'conversations');
+const PROPOSALS_DIR = path.join(DATA_DIR, 'proposals');
 fs.mkdirSync(CONV_DIR, { recursive: true });
+fs.mkdirSync(PROPOSALS_DIR, { recursive: true });
 
 function loadConversation(phone) {
   try {
     return JSON.parse(fs.readFileSync(path.join(CONV_DIR, `${phone}.json`), 'utf8'));
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 function saveConversation(phone, messages) {
   fs.writeFileSync(path.join(CONV_DIR, `${phone}.json`), JSON.stringify(messages));
+}
+
+function loadJson(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
+}
+
+function saveJson(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data));
+}
+
+const PENDING_FILE = path.join(DATA_DIR, 'pending_approvals.json');
+const INPUTS_FILE  = path.join(DATA_DIR, 'proposal_inputs.json');
+
+function savePendingApprovals() {
+  saveJson(PENDING_FILE, Object.fromEntries(pendingApprovals));
+}
+
+function saveProposalInputs() {
+  saveJson(INPUTS_FILE, Object.fromEntries(pendingProposalInputs));
+}
+
+function proposalDocPath(phone) {
+  return path.join(PROPOSALS_DIR, `${phone.replace(/[@.]/g, '_')}.docx`);
+}
+
+function savePendingDocument(phone, buffer, fileName) {
+  pendingDocuments.set(phone, { buffer, fileName });
+  fs.writeFileSync(proposalDocPath(phone), buffer);
+  saveJson(proposalDocPath(phone) + '.meta.json', { fileName });
+}
+
+function getPendingDocument(phone) {
+  if (pendingDocuments.has(phone)) return pendingDocuments.get(phone);
+  try {
+    const buffer = fs.readFileSync(proposalDocPath(phone));
+    const { fileName } = loadJson(proposalDocPath(phone) + '.meta.json', {});
+    if (!fileName) return null;
+    pendingDocuments.set(phone, { buffer, fileName });
+    return { buffer, fileName };
+  } catch { return null; }
+}
+
+function deletePendingDocument(phone) {
+  pendingDocuments.delete(phone);
+  try { fs.unlinkSync(proposalDocPath(phone)); } catch {}
+  try { fs.unlinkSync(proposalDocPath(phone) + '.meta.json'); } catch {}
 }
 
 // Histórico de conversa por número de telefone
@@ -29,16 +76,13 @@ function saveConversation(phone, messages) {
 const conversations = new Map();
 
 // Aprovações pendentes aguardando resposta da Fernanda
-// Formato: Map<code_lowercase, { phone, type }>
-const pendingApprovals = new Map();
+const pendingApprovals = new Map(Object.entries(loadJson(PENDING_FILE, {})));
 
 // Documentos gerados aguardando envio após aprovação
-// Formato: Map<customer_phone, { buffer, fileName }>
 const pendingDocuments = new Map();
 
 // Inputs originais das propostas para permitir reedição pela Fernanda
-// Formato: Map<customer_phone, generate_proposal_input>
-const pendingProposalInputs = new Map();
+const pendingProposalInputs = new Map(Object.entries(loadJson(INPUTS_FILE, {})));
 
 // Conversa da Fernanda com a Li (canal interno)
 const fernandaConversation = [];
@@ -243,8 +287,9 @@ async function runGenerateProposal(input) {
     });
 
     const fileName = buildFileName({ serviceType: service_type, customerName: customer_name, neighborhood, areaMq: area_m2 });
-    pendingDocuments.set(customer_phone, { buffer, fileName });
+    savePendingDocument(customer_phone, buffer, fileName);
     pendingProposalInputs.set(customer_phone, input);
+    saveProposalInputs();
 
     console.log(`[generate_proposal] Documento gerado: ${fileName} | Cliente: ${customer_phone}`);
     return { success: true, fileName };
@@ -265,6 +310,7 @@ async function runNotifyFernanda({ type, customer_name, customer_phone, message,
 
   // Registra a aprovação pendente
   pendingApprovals.set(code.toLowerCase(), { phone: customer_phone, type });
+  savePendingApprovals();
 
   const fullMessage =
     `${message}\n\n` +
@@ -275,7 +321,7 @@ async function runNotifyFernanda({ type, customer_name, customer_phone, message,
 
   // Envia o documento gerado para Fernanda (se houver)
   if (type === 'aprovacao_orcamento') {
-    const doc = pendingDocuments.get(customer_phone);
+    const doc = getPendingDocument(customer_phone);
     if (doc) {
       try {
         await sendDocument(fernandaPhone, doc.buffer, doc.fileName, '📎 Proposta para revisão');
@@ -335,7 +381,7 @@ async function runFernandaTool(name, input) {
     if (!result.success) return result;
 
     const fernandaPhone = process.env.FERNANDA_PHONE;
-    const doc = pendingDocuments.get(customer_phone);
+    const doc = getPendingDocument(customer_phone);
     if (doc && fernandaPhone) {
       try {
         await sendDocument(fernandaPhone, doc.buffer, doc.fileName, '📎 Proposta atualizada para revisão');
@@ -487,6 +533,7 @@ export async function injectApprovalResult(code, approved) {
   }
 
   pendingApprovals.delete(code.toLowerCase());
+  savePendingApprovals();
 
   const { phone, type } = pending;
   const resposta = approved ? 'aprovado' : 'recusado';
@@ -502,11 +549,14 @@ export async function injectApprovalResult(code, approved) {
 
   // Envia o documento ao cliente após aprovação do orçamento
   if (approved && type === 'aprovacao_orcamento') {
-    const doc = pendingDocuments.get(phone);
+    const doc = getPendingDocument(phone);
     if (doc) {
       try {
         await sendDocument(phone, doc.buffer, doc.fileName, '📎 Segue a proposta em anexo!');
-        pendingDocuments.delete(phone);
+        deletePendingDocument(phone);
+        pendingProposalInputs.delete(phone);
+        saveProposalInputs();
+        savePendingApprovals();
         console.log(`[bot → ${phone}] Proposta enviada: ${doc.fileName}`);
       } catch (err) {
         console.warn(`[injectApprovalResult] Erro ao enviar documento ao cliente ${phone}:`, err.message);
