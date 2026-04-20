@@ -451,7 +451,16 @@ export async function processFernandaMessage(text) {
     break;
   }
 
-  fernandaConversation.splice(0, fernandaConversation.length, ...thread.slice(-20));
+  // Garante que o histórico não comece com tool_result órfão (causa erro na API)
+  let kept = thread.slice(-20);
+  while (kept.length > 0) {
+    const first = kept[0];
+    const hasOrphanToolResult = Array.isArray(first.content) &&
+      first.content.some(b => b.type === 'tool_result');
+    if (!hasOrphanToolResult) break;
+    kept = kept.slice(1);
+  }
+  fernandaConversation.splice(0, fernandaConversation.length, ...kept);
   return finalResponse;
 }
 
@@ -537,7 +546,15 @@ export async function injectApprovalResult(code, approved) {
 
   const { phone, type } = pending;
   const resposta = approved ? 'aprovado' : 'recusado';
-  const systemMsg = `[RESPOSTA_FERNANDA] Código: ${code} | Fernanda ${resposta} a solicitação. Tipo: ${type}`;
+  let systemMsg = `[RESPOSTA_FERNANDA] Código: ${code} | Fernanda ${resposta} a solicitação. Tipo: ${type}`;
+
+  // Inclui dados atuais da proposta para que a Li use os valores corretos ao confirmar com o cliente
+  if (approved && type === 'aprovacao_orcamento') {
+    const input = pendingProposalInputs.get(phone);
+    if (input) {
+      systemMsg += `\n\n⚠️ Use ESTES dados atualizados ao confirmar com o cliente (ignore valores antigos da conversa):\n- Valor: R$ ${input.value}\n- Duração: ${input.duration_days} dia(s)\n- Equipe: ${input.team_count} pessoa(s)\n- Serviços: ${(input.services_list || []).join(' | ')}`;
+    }
+  }
 
   console.log(`[injectApprovalResult] ${systemMsg} → cliente ${phone}`);
 
