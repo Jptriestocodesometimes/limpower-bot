@@ -1,20 +1,7 @@
-export function buildSystemPrompt(customerPhone = null) {
-  const hoje = new Date().toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    timeZone: process.env.TIMEZONE || 'America/Sao_Paulo'
-  });
-
-  const customerPhoneLine = customerPhone
-    ? `\n**WhatsApp do cliente nesta conversa:** \`${customerPhone}\` — use SEMPRE esse valor como \`customer_phone\` ao chamar notify_fernanda. Nunca peça o telefone ao cliente.\n`
-    : '';
-
-  return `# SYSTEM PROMPT — Li, Assistente da Limpower
+const STATIC_SYSTEM_PROMPT = `# SYSTEM PROMPT — Li, Assistente da Limpower
 
 ## Identidade
-${customerPhoneLine}
+
 Você é a **Li**, assistente virtual da **Limpower Serviços de Limpeza**. Você representa a empresa com o mesmo carinho e simpatia da Fernanda, dona da Limpower. Seu tom é informal, caloroso e acolhedor — como uma atendente carioca que faz o cliente se sentir bem-vindo desde a primeira mensagem.
 
 Você não é um robô frio. Você é a Li — simpática, prestativa e eficiente.
@@ -305,22 +292,11 @@ Quando receber uma mensagem no formato:
 Aja conforme:
 - aprovado + tipo aprovacao_orcamento → execute o Passo 4 (envie o orçamento ao cliente)
 - aprovado + tipo pedido_desconto → informe o desconto aprovado ao cliente
-- recusado + qualquer tipo → diga ao cliente para aguardar um momento
+- recusado + qualquer tipo → diga ao cliente para aguardar um momento`;
 
-Hoje é ${hoje}.`;
-}
-
-export function buildFernandaSystemPrompt() {
-  const hoje = new Date().toLocaleDateString('pt-BR', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    timeZone: process.env.TIMEZONE || 'America/Sao_Paulo'
-  });
-
-  return `# Canal interno — Li fala com a Fernanda
+const STATIC_FERNANDA_PROMPT = `# Canal interno — Li fala com a Fernanda
 
 Você é a Li, assistente da Limpower. Você está conversando com a **Fernanda**, sua supervisora e dona da empresa.
-
-Hoje é ${hoje}.
 
 ## Comportamento neste canal
 
@@ -350,4 +326,52 @@ Só depois de obter a lista atualizada é que você age.
 Se a Fernanda enviar no formato \`CODIGO sim\` ou \`CODIGO nao\`, chame \`aprovar_rejeitar\` imediatamente. Exemplos:
 - "João235M2 sim" → code: "João235M2", approved: true
 - "BiaEst nao" → code: "BiaEst", approved: false`;
+
+export function buildSystemPrompt(customerPhone = null) {
+  const hoje = new Date().toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: process.env.TIMEZONE || 'America/Sao_Paulo'
+  });
+
+  const dynamicParts = [];
+  if (customerPhone) {
+    dynamicParts.push(
+      `**WhatsApp do cliente nesta conversa:** \`${customerPhone}\` — use SEMPRE esse valor como \`customer_phone\` ao chamar notify_fernanda. Nunca peça o telefone ao cliente.`
+    );
+  }
+  dynamicParts.push(`Hoje é ${hoje}.`);
+
+  return [
+    {
+      type: 'text',
+      text: STATIC_SYSTEM_PROMPT,
+      cache_control: { type: 'ephemeral' }
+    },
+    {
+      type: 'text',
+      text: dynamicParts.join('\n\n')
+    }
+  ];
+}
+
+export function buildFernandaSystemPrompt() {
+  const hoje = new Date().toLocaleDateString('pt-BR', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: process.env.TIMEZONE || 'America/Sao_Paulo'
+  });
+
+  return [
+    {
+      type: 'text',
+      text: STATIC_FERNANDA_PROMPT,
+      cache_control: { type: 'ephemeral' }
+    },
+    {
+      type: 'text',
+      text: `Hoje é ${hoje}.`
+    }
+  ];
 }

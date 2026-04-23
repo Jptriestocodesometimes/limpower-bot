@@ -155,7 +155,8 @@ const FERNANDA_TOOLS = [
         message: { type: 'string', description: 'Mensagem a enviar' }
       },
       required: ['customer_phone', 'message']
-    }
+    },
+    cache_control: { type: 'ephemeral' }
   }
 ];
 
@@ -261,7 +262,8 @@ const TOOLS = [
         notes: { type: 'string', description: 'Observações adicionais (opcional)' }
       },
       required: ['customer_name', 'customer_phone', 'service_type', 'address', 'date', 'time']
-    }
+    },
+    cache_control: { type: 'ephemeral' }
   }
 ];
 
@@ -440,8 +442,8 @@ export async function processFernandaMessage(text) {
 
   while (true) {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      model: 'claude-haiku-4-5',
+      max_tokens: 512,
       system: buildFernandaSystemPrompt(),
       tools: FERNANDA_TOOLS,
       messages: thread
@@ -477,7 +479,7 @@ export async function processFernandaMessage(text) {
   }
 
   // Garante que o histórico não comece com tool_result órfão (causa erro na API)
-  let kept = thread.slice(-20);
+  let kept = thread.slice(-12);
   while (kept.length > 0) {
     const first = kept[0];
     const hasOrphanToolResult = Array.isArray(first.content) &&
@@ -505,8 +507,8 @@ export async function processMessage(phone, text, customerName) {
   // Loop agêntico: continua até end_turn ou ausência de tool_use
   while (true) {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      model: 'claude-haiku-4-5',
+      max_tokens: 512,
       system: buildSystemPrompt(phone),
       tools: TOOLS,
       messages: thread
@@ -551,7 +553,7 @@ export async function processMessage(phone, text, customerName) {
     break;
   }
 
-  const kept = thread.slice(-30);
+  const kept = thread.slice(-20);
   conversations.set(phone, kept);
   saveConversation(phone, kept);
 
