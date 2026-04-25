@@ -204,7 +204,7 @@ const TOOLS = [
         destinatario_linha: { type: 'string', description: 'Linha do destinatário antes do Prezado (empresa ou vazio)' },
         local_description: { type: 'string', description: 'Ex: Apartamento 155 m² - Vila Olímpia - SP' },
         neighborhood: { type: 'string', description: 'Bairro (para nome do arquivo)' },
-        service_type: { type: 'string', enum: ['pos_obra', 'pre_mudanca', 'estofados', 'vidros'] },
+        service_type: { type: 'string', enum: ['pos_obra', 'pre_mudanca', 'estofados', 'vidros', 'diaria'] },
         preferred_date: { type: 'string', description: 'Data preferida pelo cliente (texto, ex: 21/04/2026)' },
         services_list: {
           type: 'array',
@@ -233,7 +233,7 @@ const TOOLS = [
         },
         service_type: {
           type: 'string',
-          enum: ['pos_obra', 'pre_mudanca', 'estofados', 'vidros'],
+          enum: ['pos_obra', 'pre_mudanca', 'estofados', 'vidros', 'diaria'],
           description: 'Tipo de serviço solicitado'
         }
       },
@@ -250,7 +250,7 @@ const TOOLS = [
         customer_phone: { type: 'string', description: 'Número de telefone do cliente' },
         service_type: {
           type: 'string',
-          enum: ['pos_obra', 'pre_mudanca', 'estofados', 'vidros']
+          enum: ['pos_obra', 'pre_mudanca', 'estofados', 'vidros', 'diaria']
         },
         address: { type: 'string', description: 'Endereço completo do imóvel' },
         date: { type: 'string', description: 'Data no formato YYYY-MM-DD' },

@@ -164,7 +164,8 @@ export function buildFileName({ serviceType, customerName, neighborhood, areaMq,
     pos_obra: 'Pós_Obra',
     pre_mudanca: 'Pre_Mudanca',
     estofados: 'Estofados',
-    vidros: 'Vidros'
+    vidros: 'Vidros',
+    diaria: 'Diaria'
   };
   const tipo = typeMap[serviceType] || serviceType;
 
