@@ -109,7 +109,9 @@ export async function generateProposalModelA({
     mixed([{ text: 'Valor: ', bold: true }, { text: `R$ ${value}` }]),
     blank(),
     p(`Prazo de execução: ${dayStr} (das ${schedule})`),
-    p(`Equipe: ${teamCount} pessoas (${cleaners} para a limpeza + 1 supervisora)`),
+    p(teamCount === 1
+      ? `Equipe: 1 pessoa (supervisora)`
+      : `Equipe: ${teamCount} pessoas (${cleaners} para a limpeza + 1 supervisora)`),
     blank(),
     blank(),
     p('Condições de pagamento: 50% no aceite e 50% após a execução e entrega do serviço.'),

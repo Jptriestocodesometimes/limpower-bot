@@ -6,6 +6,9 @@ import { sendMessage, sendTyping } from './whatsapp.js';
 const app = express();
 app.use(express.json());
 
+// Números em processamento — evita corrida de condição em mensagens simultâneas
+const processing = new Set();
+
 // Funcionários — bot ignora mensagens desses números silenciosamente
 const STAFF_PHONES = new Set([
   '5511959239372', // Marcelo estofados
@@ -24,6 +27,13 @@ const FERNANDA_JID = fernandaRaw
   : null;
 
 app.post('/webhook', async (req, res) => {
+  // Verifica segredo do webhook se configurado
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const provided = req.headers['apikey'] || req.headers['x-webhook-secret'];
+    if (provided !== webhookSecret) return res.sendStatus(401);
+  }
+
   // Responde imediatamente para o Evolution API não retentar
   res.sendStatus(200);
 
@@ -60,9 +70,15 @@ app.post('/webhook', async (req, res) => {
   }
 
   // ── Mensagens de clientes ───────────────────────────────────────────────────
+  if (processing.has(phone)) {
+    console.log(`[${phone}] Mensagem descartada — processamento em andamento`);
+    return;
+  }
+
   const customerName = data.pushName || 'Cliente';
   console.log(`[${phone}] ${customerName}: ${text}`);
 
+  processing.add(phone);
   try {
     await sendTyping(phone, 1500);
     const reply = await processMessage(phone, text, customerName);
@@ -73,6 +89,8 @@ app.post('/webhook', async (req, res) => {
   } catch (err) {
     console.error(`Erro ao processar mensagem de ${phone}:`, err);
     await sendMessage(phone, 'Desculpe, tive um probleminha aqui. Pode repetir?');
+  } finally {
+    processing.delete(phone);
   }
 });
 

@@ -22,7 +22,10 @@ function loadConversation(phone) {
 }
 
 function saveConversation(phone, messages) {
-  fs.writeFileSync(path.join(CONV_DIR, `${phone}.json`), JSON.stringify(messages));
+  const file = path.join(CONV_DIR, `${phone}.json`);
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(messages));
+  fs.renameSync(tmp, file);
 }
 
 function loadJson(file, fallback) {
@@ -30,7 +33,9 @@ function loadJson(file, fallback) {
 }
 
 function saveJson(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data));
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data));
+  fs.renameSync(tmp, file);
 }
 
 const PENDING_FILE  = path.join(DATA_DIR, 'pending_approvals.json');
@@ -38,12 +43,10 @@ const INPUTS_FILE   = path.join(DATA_DIR, 'proposal_inputs.json');
 const CHANGES_FILE  = path.join(DATA_DIR, 'proposal_changes.jsonl');
 
 function logProposalChange(original, changes, customerName, customerPhone) {
-  const before = {};
-  const after = {};
-  for (const key of Object.keys(changes)) {
-    before[key] = original[key];
-    after[key]  = changes[key];
-  }
+  const keys = Object.keys(changes);
+  const before = Object.fromEntries(keys.map(k => [k, original[k]]));
+  const after  = Object.fromEntries(keys.map(k => [k, changes[k]]));
+
   const entry = {
     timestamp:      new Date().toISOString(),
     customer_name:  customerName,
@@ -72,25 +75,29 @@ function proposalDocPath(phone) {
 
 function savePendingDocument(phone, buffer, fileName) {
   pendingDocuments.set(phone, { buffer, fileName });
-  fs.writeFileSync(proposalDocPath(phone), buffer);
-  saveJson(proposalDocPath(phone) + '.meta.json', { fileName });
+  const docPath = proposalDocPath(phone);
+  fs.writeFileSync(docPath, buffer);
+  saveJson(docPath + '.meta.json', { fileName });
 }
 
 function getPendingDocument(phone) {
   if (pendingDocuments.has(phone)) return pendingDocuments.get(phone);
+  const docPath = proposalDocPath(phone);
   try {
-    const buffer = fs.readFileSync(proposalDocPath(phone));
-    const { fileName } = loadJson(proposalDocPath(phone) + '.meta.json', {});
+    const buffer = fs.readFileSync(docPath);
+    const { fileName } = loadJson(docPath + '.meta.json', {});
     if (!fileName) return null;
-    pendingDocuments.set(phone, { buffer, fileName });
-    return { buffer, fileName };
+    const doc = { buffer, fileName };
+    pendingDocuments.set(phone, doc);
+    return doc;
   } catch { return null; }
 }
 
 function deletePendingDocument(phone) {
   pendingDocuments.delete(phone);
-  try { fs.unlinkSync(proposalDocPath(phone)); } catch {}
-  try { fs.unlinkSync(proposalDocPath(phone) + '.meta.json'); } catch {}
+  const docPath = proposalDocPath(phone);
+  try { fs.unlinkSync(docPath); } catch {}
+  try { fs.unlinkSync(docPath + '.meta.json'); } catch {}
 }
 
 // Histórico de conversa por número de telefone
@@ -106,8 +113,14 @@ const pendingDocuments = new Map();
 // Inputs originais das propostas para permitir reedição pela Fernanda
 const pendingProposalInputs = new Map(Object.entries(loadJson(INPUTS_FILE, {})));
 
-// Conversa da Fernanda com a Li (canal interno)
-const fernandaConversation = [];
+const FERNANDA_CONV_FILE = path.join(CONV_DIR, 'fernanda_internal.json');
+
+function saveFernandaConversation() {
+  saveJson(FERNANDA_CONV_FILE, fernandaConversation);
+}
+
+// Conversa da Fernanda com a Li (canal interno) — persistida entre reinicializações
+const fernandaConversation = loadJson(FERNANDA_CONV_FILE, []);
 
 const FERNANDA_TOOLS = [
   {
@@ -169,7 +182,7 @@ const TOOLS = [
       properties: {
         type: {
           type: 'string',
-          enum: ['aprovacao_orcamento', 'pedido_desconto', 'reclamacao', 'duvida'],
+          enum: ['nova_consulta', 'aprovacao_orcamento', 'pedido_desconto', 'reclamacao', 'duvida'],
           description: 'Tipo da notificação'
         },
         customer_name: {
@@ -268,25 +281,23 @@ const TOOLS = [
 ];
 
 // Gera o código de aprovação no formato: PrimeiroNome + sufixo
-// Ex: pos_obra 128m² → "Bia128M2" | estofados → "BiaEst" | vidros → "BiaVid"
+// Ex: pos_obra 128m² → "Bia128M2_A3F2" | estofados → "BiaEst" | vidros → "BiaVid"
+function approvalCodeSuffix(type, areaMq) {
+  if (areaMq && type === 'aprovacao_orcamento') {
+    const unique = Date.now().toString(36).slice(-4).toUpperCase();
+    return `${Math.round(areaMq)}M2_${unique}`;
+  }
+  switch (type) {
+    case 'pedido_desconto': return 'Desc';
+    case 'reclamacao':      return 'Rec';
+    case 'duvida':          return 'Duvida';
+    default:                return Date.now().toString().slice(-4); // fallback
+  }
+}
+
 function generateApprovalCode(customerName, type, areaMq) {
   const firstName = customerName.trim().split(/\s+/)[0];
-  let suffix;
-
-  if (areaMq && type === 'aprovacao_orcamento') {
-    suffix = `${Math.round(areaMq)}M2`;
-  } else if (type === 'pedido_desconto') {
-    suffix = 'Desc';
-  } else if (type === 'reclamacao') {
-    suffix = 'Rec';
-  } else if (type === 'duvida') {
-    suffix = 'Duvida';
-  } else {
-    // Fallback: últimos 4 dígitos do timestamp
-    suffix = Date.now().toString().slice(-4);
-  }
-
-  return `${firstName}${suffix}`;
+  return `${firstName}${approvalCodeSuffix(type, areaMq)}`;
 }
 
 async function runGenerateProposal(input) {
@@ -331,20 +342,19 @@ async function runNotifyFernanda({ type, customer_name, customer_phone, message,
     return { success: false, error: 'FERNANDA_PHONE não configurado.' };
   }
 
-  const code = generateApprovalCode(customer_name, type, area_m2);
+  await sendMessage(fernandaPhone, message);
 
-  // Registra a aprovação pendente
+  // nova_consulta é só informativa — não requer aprovação nem código
+  if (type === 'nova_consulta') {
+    console.log(`[notify_fernanda] Nova consulta notificada. Cliente: ${customer_phone}`);
+    return { success: true, note: 'Fernanda notificada sobre a nova consulta.' };
+  }
+
+  // Para os demais tipos, gera código interno para rastreamento (não exibido para a Fernanda)
+  const code = generateApprovalCode(customer_name, type, area_m2);
   pendingApprovals.set(code.toLowerCase(), { phone: customer_phone, type });
   savePendingApprovals();
 
-  const fullMessage =
-    `${message}\n\n` +
-    `📌 *Código de resposta:* ${code}\n` +
-    `👉 Responda: \`${code} sim\` ou \`${code} nao\``;
-
-  await sendMessage(fernandaPhone, fullMessage);
-
-  // Envia o documento gerado para Fernanda (se houver)
   if (type === 'aprovacao_orcamento') {
     const doc = getPendingDocument(customer_phone);
     if (doc) {
@@ -356,96 +366,106 @@ async function runNotifyFernanda({ type, customer_name, customer_phone, message,
     }
   }
 
-  console.log(`[notify_fernanda] Notificação enviada para Fernanda. Código: ${code} | Cliente: ${customer_phone}`);
-
+  console.log(`[notify_fernanda] Notificação enviada. Código interno: ${code} | Tipo: ${type} | Cliente: ${customer_phone}`);
   return {
     success: true,
-    approval_code: code,
-    note: 'Notificação enviada para a Fernanda. Informe o cliente que está preparando o orçamento e aguarde a resposta da Fernanda.'
+    note: 'Notificação enviada para a Fernanda. Aguarde a resposta dela pelo canal interno.'
   };
 }
 
+const TOOL_HANDLERS = {
+  generate_proposal:  input => runGenerateProposal(input),
+  notify_fernanda:    input => runNotifyFernanda(input),
+  check_availability: input => getAvailableSlots(input.date, input.service_type),
+  create_appointment: input => createAppointment(input)
+};
+
 async function runTool(name, input) {
-  if (name === 'generate_proposal') {
-    return await runGenerateProposal(input);
-  }
-  if (name === 'notify_fernanda') {
-    return await runNotifyFernanda(input);
-  }
-  if (name === 'check_availability') {
-    return await getAvailableSlots(input.date, input.service_type);
-  }
-  if (name === 'create_appointment') {
-    return await createAppointment(input);
-  }
-  throw new Error(`Ferramenta desconhecida: ${name}`);
+  const handler = TOOL_HANDLERS[name];
+  if (!handler) throw new Error(`Ferramenta desconhecida: ${name}`);
+  return handler(input);
 }
+
+async function runListarPendentes() {
+  const pendentes = [];
+  for (const [code, data] of pendingApprovals) {
+    const stored = pendingProposalInputs.get(data.phone);
+    pendentes.push({
+      code,
+      telefone: data.phone,
+      cliente: stored?.customer_name ?? 'desconhecido',
+      tipo: data.type
+    });
+  }
+  return pendentes.length > 0 ? pendentes : { message: 'Nenhum orçamento pendente no momento.' };
+}
+
+async function runAtualizarProposta(input) {
+  const { customer_phone, ...changes } = input;
+  const stored = pendingProposalInputs.get(customer_phone);
+  if (!stored) return { success: false, error: 'Proposta não encontrada para esse cliente.' };
+
+  logProposalChange(stored, changes, stored.customer_name, customer_phone);
+
+  const result = await runGenerateProposal({ ...stored, ...changes });
+  if (!result.success) return result;
+
+  const fernandaPhone = process.env.FERNANDA_PHONE;
+  const doc = getPendingDocument(customer_phone);
+  if (doc && fernandaPhone) {
+    try {
+      await sendDocument(fernandaPhone, doc.buffer, doc.fileName, '📎 Proposta atualizada para revisão');
+    } catch (err) {
+      console.warn('[atualizar_proposta] Erro ao reenviar documento:', err.message);
+    }
+  }
+
+  return { success: true, message: `Proposta de ${stored.customer_name} atualizada e reenviada.` };
+}
+
+async function runAprovarRejeitar({ code, approved }) {
+  const handled = await injectApprovalResult(code, approved);
+  if (!handled) return { success: false, error: `Código "${code}" não encontrado ou já processado.` };
+  return { success: true };
+}
+
+async function runEnviarMensagemCliente({ customer_phone, message }) {
+  await sendMessage(customer_phone, message);
+  return { success: true };
+}
+
+const FERNANDA_TOOL_HANDLERS = {
+  listar_pendentes:        runListarPendentes,
+  atualizar_proposta:      runAtualizarProposta,
+  aprovar_rejeitar:        runAprovarRejeitar,
+  enviar_mensagem_cliente: runEnviarMensagemCliente
+};
 
 async function runFernandaTool(name, input) {
-  if (name === 'listar_pendentes') {
-    const pendentes = [];
-    for (const [code, data] of pendingApprovals) {
-      const stored = pendingProposalInputs.get(data.phone);
-      pendentes.push({
-        code,
-        telefone: data.phone,
-        cliente: stored?.customer_name ?? 'desconhecido',
-        tipo: data.type
-      });
-    }
-    return pendentes.length > 0 ? pendentes : { message: 'Nenhum orçamento pendente no momento.' };
-  }
-
-  if (name === 'atualizar_proposta') {
-    const { customer_phone, ...changes } = input;
-    const stored = pendingProposalInputs.get(customer_phone);
-    if (!stored) return { success: false, error: 'Proposta não encontrada para esse cliente.' };
-
-    logProposalChange(stored, changes, stored.customer_name, customer_phone);
-
-    const updated = { ...stored, ...changes };
-    const result = await runGenerateProposal(updated);
-    if (!result.success) return result;
-
-    const fernandaPhone = process.env.FERNANDA_PHONE;
-    const doc = getPendingDocument(customer_phone);
-    if (doc && fernandaPhone) {
-      try {
-        await sendDocument(fernandaPhone, doc.buffer, doc.fileName, '📎 Proposta atualizada para revisão');
-      } catch (err) {
-        console.warn('[atualizar_proposta] Erro ao reenviar documento:', err.message);
-      }
-    }
-
-    return { success: true, message: `Proposta de ${stored.customer_name} atualizada e reenviada.` };
-  }
-
-  if (name === 'aprovar_rejeitar') {
-    const handled = await injectApprovalResult(input.code, input.approved);
-    if (!handled) return { success: false, error: `Código "${input.code}" não encontrado ou já processado.` };
-    return { success: true };
-  }
-
-  if (name === 'enviar_mensagem_cliente') {
-    await sendMessage(input.customer_phone, input.message);
-    return { success: true };
-  }
-
-  throw new Error(`Ferramenta desconhecida: ${name}`);
+  const handler = FERNANDA_TOOL_HANDLERS[name];
+  if (!handler) throw new Error(`Ferramenta desconhecida: ${name}`);
+  return handler(input);
 }
 
-export async function processFernandaMessage(text) {
-  fernandaConversation.push({ role: 'user', content: text });
-  const thread = [...fernandaConversation];
+const MAX_AGENT_ITERATIONS = 10;
 
-  let finalResponse = null;
+// Loop agêntico genérico — chama a API até end_turn ou stop_reason inesperado,
+// despachando tool_use blocks pelo handler fornecido. Retorna { thread, text }.
+async function runAgentLoop({ system, tools, messages, runToolFn, logTag }) {
+  const thread = [...messages];
+  let finalText = null;
+  let iterations = 0;
 
   while (true) {
+    if (++iterations > MAX_AGENT_ITERATIONS) {
+      console.error(`[${logTag}] Limite de iterações atingido — possível ciclo de ferramentas`);
+      break;
+    }
     const response = await client.messages.create({
       model: 'claude-haiku-4-5',
       max_tokens: 512,
-      system: buildFernandaSystemPrompt(),
-      tools: FERNANDA_TOOLS,
+      system,
+      tools,
       messages: thread
     });
 
@@ -453,41 +473,57 @@ export async function processFernandaMessage(text) {
 
     if (response.stop_reason === 'end_turn') {
       const textBlock = response.content.find(b => b.type === 'text');
-      finalResponse = textBlock?.text ?? null;
+      finalText = textBlock?.text ?? null;
       break;
     }
 
-    if (response.stop_reason === 'tool_use') {
-      const toolResults = [];
-      for (const block of response.content) {
-        if (block.type !== 'tool_use') continue;
-        console.log(`[fernanda tool] ${block.name}`, JSON.stringify(block.input));
-        let result;
-        try {
-          result = await runFernandaTool(block.name, block.input);
-          console.log(`[fernanda tool result]`, JSON.stringify(result));
-        } catch (err) {
-          result = { error: err.message };
-        }
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
+    if (response.stop_reason !== 'tool_use') break;
+
+    const toolResults = [];
+    for (const block of response.content) {
+      if (block.type !== 'tool_use') continue;
+      console.log(`[${logTag}] ${block.name}`, JSON.stringify(block.input));
+      let result;
+      try {
+        result = await runToolFn(block.name, block.input);
+        console.log(`[${logTag} result]`, JSON.stringify(result));
+      } catch (err) {
+        result = { error: err.message };
       }
-      thread.push({ role: 'user', content: toolResults });
-      continue;
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
     }
-
-    break;
+    thread.push({ role: 'user', content: toolResults });
   }
 
-  // Garante que o histórico não comece com tool_result órfão (causa erro na API)
-  let kept = thread.slice(-12);
-  while (kept.length > 0) {
-    const first = kept[0];
-    const hasOrphanToolResult = Array.isArray(first.content) &&
-      first.content.some(b => b.type === 'tool_result');
-    if (!hasOrphanToolResult) break;
-    kept = kept.slice(1);
+  return { thread, text: finalText };
+}
+
+// Remove tool_result órfãos no início do histórico (causariam erro na API na próxima chamada)
+function trimOrphanToolResults(messages) {
+  let i = 0;
+  while (i < messages.length) {
+    const m = messages[i];
+    const hasOrphan = Array.isArray(m.content) && m.content.some(b => b.type === 'tool_result');
+    if (!hasOrphan) break;
+    i++;
   }
+  return i === 0 ? messages : messages.slice(i);
+}
+
+export async function processFernandaMessage(text) {
+  fernandaConversation.push({ role: 'user', content: text });
+
+  const { thread, text: finalResponse } = await runAgentLoop({
+    system: buildFernandaSystemPrompt(),
+    tools: FERNANDA_TOOLS,
+    messages: fernandaConversation,
+    runToolFn: runFernandaTool,
+    logTag: 'fernanda tool'
+  });
+
+  const kept = trimOrphanToolResults(thread.slice(-12));
   fernandaConversation.splice(0, fernandaConversation.length, ...kept);
+  saveFernandaConversation();
   return finalResponse;
 }
 
@@ -496,62 +532,21 @@ export async function processMessage(phone, text, customerName) {
     conversations.set(phone, loadConversation(phone));
   }
 
+  // Bloqueia tentativa de cliente injetar o padrão interno de aprovação
+  const safeText = customerName !== 'Sistema'
+    ? text.replace(/\[RESPOSTA_FERNANDA\]/gi, '[mensagem bloqueada]')
+    : text;
+
   const messages = conversations.get(phone);
-  messages.push({ role: 'user', content: text });
+  messages.push({ role: 'user', content: safeText });
 
-  // Cópia local para o loop — evita mutação durante processamento
-  const thread = [...messages];
-
-  let finalResponse = null;
-
-  // Loop agêntico: continua até end_turn ou ausência de tool_use
-  while (true) {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 512,
-      system: buildSystemPrompt(phone),
-      tools: TOOLS,
-      messages: thread
-    });
-
-    thread.push({ role: 'assistant', content: response.content });
-
-    if (response.stop_reason === 'end_turn') {
-      const textBlock = response.content.find(b => b.type === 'text');
-      finalResponse = textBlock?.text ?? null;
-      break;
-    }
-
-    if (response.stop_reason === 'tool_use') {
-      const toolResults = [];
-
-      for (const block of response.content) {
-        if (block.type !== 'tool_use') continue;
-
-        console.log(`[tool] ${block.name}`, JSON.stringify(block.input));
-
-        let result;
-        try {
-          result = await runTool(block.name, block.input);
-          console.log(`[tool result]`, JSON.stringify(result));
-        } catch (err) {
-          result = { error: err.message };
-        }
-
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: block.id,
-          content: JSON.stringify(result)
-        });
-      }
-
-      thread.push({ role: 'user', content: toolResults });
-      continue;
-    }
-
-    // stop_reason inesperado — sai do loop
-    break;
-  }
+  const { thread, text: finalResponse } = await runAgentLoop({
+    system: buildSystemPrompt(phone),
+    tools: TOOLS,
+    messages,
+    runToolFn: runTool,
+    logTag: 'tool'
+  });
 
   const kept = thread.slice(-20);
   conversations.set(phone, kept);

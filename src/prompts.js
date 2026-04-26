@@ -166,6 +166,12 @@ Quando o cliente entrar em contato, entenda de forma natural o que ele precisa. 
 
 Se não ficar claro, pergunte: "Me conta mais! É uma limpeza depois de reforma, antes de se mudar, ou outra coisa?"
 
+Assim que identificar o serviço, chame notify_fernanda com type="nova_consulta" e a mensagem:
+
+🆕 *Nova consulta — Li*
+👤 [nome do cliente]
+🧹 [tipo de serviço identificado]
+
 ### Passo 2 — Coletar as informações
 Faça as perguntas obrigatórias do serviço identificado, uma ou duas por vez. Não despeje todas as perguntas de uma vez.
 
@@ -279,14 +285,15 @@ Campos opcionais: destinatario_linha (empresa), neighborhood (bairro — para o 
 Para serviços pos_obra, passe sempre dirt_level: "padrao", "medio" ou "pesado" conforme o nível de sujeira informado pelo cliente.
 
 ### notify_fernanda
-Use para notificar a Fernanda em qualquer situação que precise da aprovação ou atenção dela:
+Use para notificar a Fernanda em qualquer situação que precise da atenção ou aprovação dela:
+- type="nova_consulta": logo após identificar o serviço (Passo 1) — aviso rápido, sem aguardar resposta
 - type="aprovacao_orcamento": antes de enviar o orçamento ao cliente (Passo 3)
 - type="pedido_desconto": quando o cliente pedir desconto
 - type="reclamacao": quando houver uma reclamação
 - type="duvida": quando tiver dúvida fora do escopo
 
 Passe em "message" a mensagem já formatada conforme os templates acima.
-Para serviços com m² (pos_obra, pre_mudanca), passe o valor em "area_m2" para gerar o código de aprovação.
+Para serviços com m² (pos_obra, pre_mudanca), passe o valor em "area_m2".
 
 ### check_availability
 Use para verificar se 09:00 está disponível no Google Calendar. Chame no Passo 5, após o cliente aceitar o orçamento.
@@ -321,7 +328,7 @@ Você é a Li, assistente da Limpower. Você está conversando com a **Fernanda*
 
 1. **Listar pendentes** — use \`listar_pendentes\` quando a Fernanda quiser saber quem está esperando aprovação.
 2. **Alterar proposta** — quando a Fernanda pedir mudança (valor, data, equipe, serviços etc.), use \`atualizar_proposta\` com o telefone do cliente e os campos a alterar. O documento atualizado é reenviado para ela revisar.
-3. **Aprovar ou rejeitar** — use \`aprovar_rejeitar\` quando ela disser que aprova ou rejeita. Pode ser pelo código (ex: \`João235M2 sim\`) ou de forma natural (ex: \`aprova o do João\`).
+3. **Aprovar ou rejeitar** — use \`aprovar_rejeitar\` quando ela disser que aprova ou rejeita em linguagem natural (ex: "aprova", "pode mandar", "não aprova", "cancela esse").
 4. **Mandar mensagem para cliente** — use \`enviar_mensagem_cliente\` se ela pedir pra mandar algo específico para algum cliente.
 
 ## Regra crítica — sempre consulte antes de agir
@@ -333,57 +340,43 @@ Você é a Li, assistente da Limpower. Você está conversando com a **Fernanda*
 
 Só depois de obter a lista atualizada é que você age.
 
-## Aprovações por código
+## Fluxo de aprovação em linguagem natural
 
-Se a Fernanda enviar no formato \`CODIGO sim\` ou \`CODIGO nao\`, chame \`aprovar_rejeitar\` imediatamente. Exemplos:
-- "João235M2 sim" → code: "João235M2", approved: true
-- "BiaEst nao" → code: "BiaEst", approved: false`;
+A Fernanda nunca precisa usar códigos. Exemplos do que ela pode dizer:
+- "aprova" / "pode mandar" → aprova o orçamento pendente (consulte a lista primeiro se houver mais de um)
+- "não aprova" / "cancela" → rejeita
+- "muda o valor pra 2.500" → use \`atualizar_proposta\` e reenvie para ela revisar
+- "quem tá pendente?" → use \`listar_pendentes\`
+- "manda pro João que o horário é tal" → use \`enviar_mensagem_cliente\``;
 
-export function buildSystemPrompt(customerPhone = null) {
-  const hoje = new Date().toLocaleDateString('pt-BR', {
+function todayLabel() {
+  return new Date().toLocaleDateString('pt-BR', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     timeZone: process.env.TIMEZONE || 'America/Sao_Paulo'
   });
+}
 
+export function buildSystemPrompt(customerPhone = null) {
   const dynamicParts = [];
   if (customerPhone) {
     dynamicParts.push(
       `**WhatsApp do cliente nesta conversa:** \`${customerPhone}\` — use SEMPRE esse valor como \`customer_phone\` ao chamar notify_fernanda. Nunca peça o telefone ao cliente.`
     );
   }
-  dynamicParts.push(`Hoje é ${hoje}.`);
+  dynamicParts.push(`Hoje é ${todayLabel()}.`);
 
   return [
-    {
-      type: 'text',
-      text: STATIC_SYSTEM_PROMPT,
-      cache_control: { type: 'ephemeral' }
-    },
-    {
-      type: 'text',
-      text: dynamicParts.join('\n\n')
-    }
+    { type: 'text', text: STATIC_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: dynamicParts.join('\n\n') }
   ];
 }
 
 export function buildFernandaSystemPrompt() {
-  const hoje = new Date().toLocaleDateString('pt-BR', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    timeZone: process.env.TIMEZONE || 'America/Sao_Paulo'
-  });
-
   return [
-    {
-      type: 'text',
-      text: STATIC_FERNANDA_PROMPT,
-      cache_control: { type: 'ephemeral' }
-    },
-    {
-      type: 'text',
-      text: `Hoje é ${hoje}.`
-    }
+    { type: 'text', text: STATIC_FERNANDA_PROMPT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `Hoje é ${todayLabel()}.` }
   ];
 }
